@@ -31,7 +31,7 @@
         {% for p in products %}
         <tr>
           <td>{{ p.title }}</td>
-          <td>${{ '%.2f'|format(p.price) }}</td>
+          <td>${{ p.formatted_price }}</td>
           <td>{{ p.seller_name }}</td>
           <td><a href="{{ url_for('product_detail', product_id=p.product_id) }}">View</a></td>
         </tr>

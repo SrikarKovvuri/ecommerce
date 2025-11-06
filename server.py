@@ -12,6 +12,7 @@ import os
 from typing import List, Dict, Any
 from flask import Flask, request, render_template, g, redirect, url_for, abort
 from sqlalchemy import create_engine, text
+from decimal import Decimal
 
 
 tmpl_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates')
@@ -83,6 +84,12 @@ def index():
     cursor = g.conn.execute(query)
     products = rows_to_dicts(cursor)
     cursor.close()
+    # Pre-format prices for template safety
+    for p in products:
+        try:
+            p["formatted_price"] = f"{float(p.get('price', 0.0)):.2f}"
+        except Exception:
+            p["formatted_price"] = str(p.get('price'))
     return render_template('index.html', products=products)
 
 
@@ -104,7 +111,12 @@ def product_detail(product_id: int):
     # Convert to dict for template convenience
     cols = row.keys()
     product = dict(zip(cols, row))
-    return render_template('product.html', product=product)
+    # Defensive: ensure price renders even if Decimal
+    try:
+        price_fmt = f"{float(product.get('price', 0.0)):.2f}"
+    except Exception:
+        price_fmt = str(product.get('price'))
+    return render_template('product.html', product=product, price_fmt=price_fmt)
 
 
 @app.route('/add_product', methods=['GET', 'POST'])
@@ -180,6 +192,11 @@ def search():
         cursor = g.conn.execute(query, {"pattern": pattern})
         products = rows_to_dicts(cursor)
         cursor.close()
+        for p in products:
+            try:
+                p["formatted_price"] = f"{float(p.get('price', 0.0)):.2f}"
+            except Exception:
+                p["formatted_price"] = str(p.get('price'))
     return render_template('search.html', q=q, products=products)
 
 
