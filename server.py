@@ -65,8 +65,17 @@ def teardown_request(exception):
 
 
 def rows_to_dicts(cursor) -> List[Dict[str, Any]]:
-    cols = cursor.keys()
-    return [dict(zip(cols, row)) for row in cursor.fetchall()]
+    # SQLAlchemy 2.x returns Row with a mapping interface
+    rows = cursor.fetchall()
+    out: List[Dict[str, Any]] = []
+    for r in rows:
+        try:
+            out.append(dict(r._mapping))
+        except Exception:
+            # Fallback to positional mapping using cursor.keys()
+            cols = cursor.keys()
+            out.append(dict(zip(cols, r)))
+    return out
 
 
 @app.route('/')
@@ -109,8 +118,11 @@ def product_detail(product_id: int):
     if row is None:
         abort(404)
     # Convert to dict for template convenience
-    cols = row.keys()
-    product = dict(zip(cols, row))
+    try:
+        product = dict(row._mapping)
+    except Exception:
+        cols = row.keys()
+        product = dict(zip(cols, row))
     # Defensive: ensure price renders even if Decimal
     try:
         price_fmt = f"{float(product.get('price', 0.0)):.2f}"

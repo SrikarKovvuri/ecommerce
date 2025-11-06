@@ -14,7 +14,23 @@
 
     <p>
       <a href="{{ url_for('add_product') }}">Add New Product</a>
+      &nbsp;|&nbsp;
+      <a href="{{ url_for('send_message') }}">Send Message</a>
     </p>
+
+    <fieldset style="max-width: 500px;">
+      <legend>Quick Access</legend>
+      <form method="get" action="" onsubmit="event.preventDefault(); if (this.uid_inbox.value) { window.location='{{ url_for('view_messages', uid=0)[:-1] }}'+ this.uid_inbox.value; }">
+        <label>Inbox for User ID:</label>
+        <input type="number" name="uid_inbox" min="1" placeholder="e.g., 1">
+        <button type="submit">Open Inbox</button>
+      </form>
+      <form method="get" action="" onsubmit="event.preventDefault(); if (this.uid_notif.value) { window.location='{{ url_for('view_notifications', uid=0)[:-1] }}'+ this.uid_notif.value; }">
+        <label>Notifications for User ID:</label>
+        <input type="number" name="uid_notif" min="1" placeholder="e.g., 1">
+        <button type="submit">Open Notifications</button>
+      </form>
+    </fieldset>
 
     {% if products and products|length > 0 %}
     <table border="1" cellpadding="6" cellspacing="0">
