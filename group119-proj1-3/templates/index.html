@@ -1,0 +1,63 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Ecommerce - Listings</title>
+  </head>
+  <body>
+    <h1>Active Listings</h1>
+
+    <form method="get" action="{{ url_for('search') }}">
+      <input type="text" name="q" placeholder="Search products...">
+      <button type="submit">Search</button>
+    </form>
+
+    <p>
+      <a href="{{ url_for('add_product') }}">Add New Product</a>
+      &nbsp;|&nbsp;
+      <a href="{{ url_for('send_message') }}">Send Message</a>
+    </p>
+
+    <fieldset style="max-width: 500px;">
+      <legend>Quick Access</legend>
+      <form method="get" action="" onsubmit="event.preventDefault(); if (this.uid_inbox.value) { window.location='{{ url_for('view_messages', uid=0)[:-1] }}'+ this.uid_inbox.value; }">
+        <label>Inbox for User ID:</label>
+        <input type="number" name="uid_inbox" min="1" placeholder="e.g., 1">
+        <button type="submit">Open Inbox</button>
+      </form>
+      <form method="get" action="" onsubmit="event.preventDefault(); if (this.uid_notif.value) { window.location='{{ url_for('view_notifications', uid=0)[:-1] }}'+ this.uid_notif.value; }">
+        <label>Notifications for User ID:</label>
+        <input type="number" name="uid_notif" min="1" placeholder="e.g., 1">
+        <button type="submit">Open Notifications</button>
+      </form>
+    </fieldset>
+
+    {% if products and products|length > 0 %}
+    <table border="1" cellpadding="6" cellspacing="0">
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Price</th>
+          <th>Seller</th>
+          <th>Details</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in products %}
+        <tr>
+          <td>{{ p.title }}</td>
+          <td>${{ p.formatted_price }}</td>
+          <td>{{ p.seller_name }}</td>
+          <td><a href="{{ url_for('product_detail', product_id=p.product_id) }}">View</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p>No active products found.</p>
+    {% endif %}
+
+  </body>
+  </html>
+
+
