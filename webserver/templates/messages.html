@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Inbox - User {{ uid }}</title>
+  </head>
+  <body>
+    <p><a href="{{ url_for('index') }}">&larr; Back to Listings</a></p>
+    <h1>Inbox for User {{ uid }}</h1>
+
+    <p>
+      <a href="{{ url_for('send_message') }}">Send a Message</a>
+      &nbsp;|&nbsp;
+      <a href="{{ url_for('view_notifications', uid=uid) }}">View Notifications</a>
+    </p>
+
+    {% if messages and messages|length > 0 %}
+    <table border="1" cellpadding="6" cellspacing="0">
+      <thead>
+        <tr>
+          <th>From</th>
+          <th>Content</th>
+          <th>Sent At</th>
+          <th>Read</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in messages %}
+        <tr>
+          <td>{{ m.sender_name }} (uid {{ m.sender_id }})</td>
+          <td>{{ m.content }}</td>
+          <td>{{ m.sent_at }}</td>
+          <td>{{ 'Yes' if m.is_read else 'No' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p>No messages.</p>
+    {% endif %}
+  </body>
+  </html>
+
+
