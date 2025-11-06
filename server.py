@@ -9,10 +9,10 @@ A debugger such as "pdb" may be helpful for debugging.
 Read about it online.
 """
 import os
-# accessible as a variable in index.html:
-from sqlalchemy import *
-from sqlalchemy.pool import NullPool
-from flask import Flask, request, render_template, g, redirect, Response, abort
+from typing import List, Dict, Any
+from flask import Flask, request, render_template, g, redirect, url_for, abort
+from sqlalchemy import create_engine, text
+
 
 tmpl_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates')
 app = Flask(__name__, template_folder=tmpl_dir)
@@ -45,155 +45,221 @@ engine = create_engine(DATABASEURI)
 # Example of running queries in your database
 # Note that this will probably not work if you already have a table named 'test' in your database, containing meaningful data. This is only an example showing you how to run queries in your database using SQLAlchemy.
 #
-with engine.connect() as conn:
-	create_table_command = """
-	CREATE TABLE IF NOT EXISTS test (
-		id serial,
-		name text
-	)
-	"""
-	res = conn.execute(text(create_table_command))
-	insert_table_command = """INSERT INTO test(name) VALUES ('grace hopper'), ('alan turing'), ('ada lovelace')"""
-	res = conn.execute(text(insert_table_command))
-	# you need to commit for create, insert, update queries to reflect
-	conn.commit()
-
 
 @app.before_request
 def before_request():
-	"""
-	This function is run at the beginning of every web request 
-	(every time you enter an address in the web browser).
-	We use it to setup a database connection that can be used throughout the request.
+    try:
+        g.conn = engine.connect()
+    except Exception:
+        g.conn = None
 
-	The variable g is globally accessible.
-	"""
-	try:
-		g.conn = engine.connect()
-	except:
-		print("uh oh, problem connecting to database")
-		import traceback; traceback.print_exc()
-		g.conn = None
 
 @app.teardown_request
 def teardown_request(exception):
-	"""
-	At the end of the web request, this makes sure to close the database connection.
-	If you don't, the database could run out of memory!
-	"""
-	try:
-		g.conn.close()
-	except Exception as e:
-		pass
+    try:
+        if g.get('conn') is not None:
+            g.conn.close()
+    except Exception:
+        pass
 
 
-#
-# @app.route is a decorator around index() that means:
-#   run index() whenever the user tries to access the "/" path using a GET request
-#
-# If you wanted the user to go to, for example, localhost:8111/foobar/ with POST or GET then you could use:
-#
-#       @app.route("/foobar/", methods=["POST", "GET"])
-#
-# PROTIP: (the trailing / in the path is important)
-# 
-# see for routing: https://flask.palletsprojects.com/en/1.1.x/quickstart/#routing
-# see for decorators: http://simeonfranklin.com/blog/2012/jul/1/python-decorators-in-12-steps/
-#
+def rows_to_dicts(cursor) -> List[Dict[str, Any]]:
+    cols = cursor.keys()
+    return [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+
 @app.route('/')
 def index():
-	"""
-	request is a special object that Flask provides to access web request information:
-
-	request.method:   "GET" or "POST"
-	request.form:     if the browser submitted a form, this contains the data in the form
-	request.args:     dictionary of URL arguments, e.g., {a:1, b:2} for http://localhost?a=1&b=2
-
-	See its API: https://flask.palletsprojects.com/en/1.1.x/api/#incoming-request-data
-	"""
-
-	# DEBUG: this is debugging code to see what request looks like
-	print(request.args)
-
-
-	#
-	# example of a database query
-	#
-	select_query = "SELECT name from test"
-	cursor = g.conn.execute(text(select_query))
-	names = []
-	for result in cursor:
-		names.append(result[0])
-	cursor.close()
-
-	#
-	# Flask uses Jinja templates, which is an extension to HTML where you can
-	# pass data to a template and dynamically generate HTML based on the data
-	# (you can think of it as simple PHP)
-	# documentation: https://realpython.com/primer-on-jinja-templating/
-	#
-	# You can see an example template in templates/index.html
-	#
-	# context are the variables that are passed to the template.
-	# for example, "data" key in the context variable defined below will be 
-	# accessible as a variable in index.html:
-	#
-	#     # will print: [u'grace hopper', u'alan turing', u'ada lovelace']
-	#     <div>{{data}}</div>
-	#     
-	#     # creates a <div> tag for each element in data
-	#     # will print: 
-	#     #
-	#     #   <div>grace hopper</div>
-	#     #   <div>alan turing</div>
-	#     #   <div>ada lovelace</div>
-	#     #
-	#     {% for n in data %}
-	#     <div>{{n}}</div>
-	#     {% endfor %}
-	#
-	context = dict(data = names)
+    # List all unsold products with seller name
+    query = text(
+        """
+        SELECT p.product_id, p.title, p.price, u.name AS seller_name
+        FROM Products p
+        JOIN Users u ON p.uid = u.uid
+        WHERE p.is_sold = FALSE
+        ORDER BY p.created_at DESC, p.product_id DESC
+        """
+    )
+    cursor = g.conn.execute(query)
+    products = rows_to_dicts(cursor)
+    cursor.close()
+    return render_template('index.html', products=products)
 
 
-	#
-	# render_template looks in the templates/ folder for files.
-	# for example, the below file reads template/index.html
-	#
-	return render_template("index.html", **context)
-
-#
-# This is an example of a different path.  You can see it at:
-# 
-#     localhost:8111/another
-#
-# Notice that the function name is another() rather than index()
-# The functions for each app.route need to have different names
-#
-@app.route('/another')
-def another():
-	return render_template("another.html")
-
-
-# Example of adding new data to the database
-@app.route('/add', methods=['POST'])
-def add():
-	# accessing form inputs from user
-	name = request.form['name']
-	
-	# passing params in for each variable into query
-	params = {}
-	params["new_name"] = name
-	g.conn.execute(text('INSERT INTO test(name) VALUES (:new_name)'), params)
-	g.conn.commit()
-	return redirect('/')
+@app.route('/product/<int:product_id>')
+def product_detail(product_id: int):
+    query = text(
+        """
+        SELECT p.*, u.name AS seller_name, u.email AS seller_email, u.phone_number AS seller_phone
+        FROM Products p
+        JOIN Users u ON p.uid = u.uid
+        WHERE p.product_id = :pid
+        """
+    )
+    cursor = g.conn.execute(query, {"pid": product_id})
+    row = cursor.fetchone()
+    cursor.close()
+    if row is None:
+        abort(404)
+    # Convert to dict for template convenience
+    cols = row.keys()
+    product = dict(zip(cols, row))
+    return render_template('product.html', product=product)
 
 
-@app.route('/login')
-def login():
-	abort(401)
-	# Your IDE may highlight this as a problem - because no such function exists (intentionally).
-	# This code is never executed because of abort().
-	this_is_never_executed()
+@app.route('/add_product', methods=['GET', 'POST'])
+def add_product():
+    if request.method == 'GET':
+        return render_template('add_product.html')
+
+    # POST: insert a new product
+    uid = request.form.get('uid')
+    title = request.form.get('title', '').strip()
+    description = request.form.get('description')
+    condition = request.form.get('condition')
+    category = request.form.get('category')
+    price = request.form.get('price')
+    image_url = request.form.get('image_url')
+
+    if not uid or not title or not category or not price:
+        return render_template('add_product.html', error='Please fill in all required fields (uid, title, category, price).'), 400
+
+    try:
+        insert_q = text(
+            """
+            INSERT INTO Products (uid, title, description, condition, category, price, image_url, is_sold)
+            VALUES (:uid, :title, :description, :condition, :category, :price, :image_url, FALSE)
+            """
+        )
+        g.conn.execute(
+            insert_q,
+            {
+                "uid": int(uid),
+                "title": title,
+                "description": description if description else None,
+                "condition": condition if condition else None,
+                "category": category,
+                "price": float(price),
+                "image_url": image_url if image_url else None,
+            },
+        )
+        g.conn.commit()
+    except Exception as e:
+        return render_template('add_product.html', error=f'Error inserting product: {e}'), 500
+
+    return redirect(url_for('index'))
+
+
+@app.route('/mark_sold/<int:product_id>', methods=['POST', 'GET'])
+def mark_sold(product_id: int):
+    try:
+        upd = text("UPDATE Products SET is_sold = TRUE WHERE product_id = :pid")
+        g.conn.execute(upd, {"pid": product_id})
+        g.conn.commit()
+    except Exception as e:
+        return f"Failed to mark sold: {e}", 500
+    return redirect(url_for('index'))
+
+
+@app.route('/search')
+def search():
+    q = request.args.get('q', '').strip()
+    products: List[Dict[str, Any]] = []
+    if q:
+        pattern = f"%{q}%"
+        query = text(
+            """
+            SELECT p.product_id, p.title, p.price, u.name AS seller_name
+            FROM Products p
+            JOIN Users u ON p.uid = u.uid
+            WHERE (p.title ILIKE :pattern OR p.description ILIKE :pattern)
+              AND p.is_sold = FALSE
+            ORDER BY p.created_at DESC, p.product_id DESC
+            """
+        )
+        cursor = g.conn.execute(query, {"pattern": pattern})
+        products = rows_to_dicts(cursor)
+        cursor.close()
+    return render_template('search.html', q=q, products=products)
+
+
+@app.route('/messages/<int:uid>')
+def view_messages(uid: int):
+    # Inbox for received messages
+    query = text(
+        """
+        SELECT m.message_id, m.content, m.sent_at, m.is_read,
+               s.name AS sender_name, s.uid AS sender_id
+        FROM Messages m
+        JOIN Users s ON m.sender_id = s.uid
+        WHERE m.receiver_id = :uid
+        ORDER BY m.sent_at DESC, m.message_id DESC
+        """
+    )
+    cursor = g.conn.execute(query, {"uid": uid})
+    messages = rows_to_dicts(cursor)
+    cursor.close()
+    return render_template('messages.html', uid=uid, messages=messages)
+
+
+@app.route('/send_message', methods=['GET', 'POST'])
+def send_message():
+    if request.method == 'GET':
+        return render_template('send_message.html')
+
+    sender_id = request.form.get('sender_id')
+    receiver_id = request.form.get('receiver_id')
+    content = request.form.get('content', '').strip()
+
+    if not sender_id or not receiver_id or not content:
+        return render_template('send_message.html', error='All fields are required.'), 400
+
+    try:
+        # Get sender name for notification text
+        srow = g.conn.execute(text("SELECT name FROM Users WHERE uid = :uid"), {"uid": int(sender_id)}).fetchone()
+        sender_name = srow[0] if srow else "Someone"
+
+        ins_msg = text(
+            """
+            INSERT INTO Messages (sender_id, receiver_id, content, is_read)
+            VALUES (:sid, :rid, :content, FALSE)
+            RETURNING message_id
+            """
+        )
+        msg_row = g.conn.execute(
+            ins_msg, {"sid": int(sender_id), "rid": int(receiver_id), "content": content}
+        ).fetchone()
+        message_id = msg_row[0]
+
+        notif_text = f"New message from {sender_name}"
+        ins_notif = text(
+            """
+            INSERT INTO Notifications (recipient_id, message_id, notification_text, is_seen)
+            VALUES (:rid, :mid, :text, FALSE)
+            """
+        )
+        g.conn.execute(ins_notif, {"rid": int(receiver_id), "mid": int(message_id), "text": notif_text})
+        g.conn.commit()
+    except Exception as e:
+        return render_template('send_message.html', error=f'Error sending message: {e}'), 500
+
+    return redirect(url_for('view_messages', uid=int(receiver_id)))
+
+
+@app.route('/notifications/<int:uid>')
+def view_notifications(uid: int):
+    query = text(
+        """
+        SELECT notification_id, message_id, notification_text, created_at, is_seen
+        FROM Notifications
+        WHERE recipient_id = :uid
+        ORDER BY created_at DESC, notification_id DESC
+        """
+    )
+    cursor = g.conn.execute(query, {"uid": uid})
+    notifications = rows_to_dicts(cursor)
+    cursor.close()
+    return render_template('notifications.html', uid=uid, notifications=notifications)
 
 
 if __name__ == "__main__":
@@ -221,4 +287,4 @@ if __name__ == "__main__":
 		print("running on %s:%d" % (HOST, PORT))
 		app.run(host=HOST, port=PORT, debug=debug, threaded=threaded)
 
-run()
+	run()
